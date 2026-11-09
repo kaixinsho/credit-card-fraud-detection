@@ -2,3 +2,8 @@ streamlit>=1.40
 xgboost>=3.0
 pandas
 numpy
+scikit-learn
+matplotlib
+seaborn
+shap
+joblib
