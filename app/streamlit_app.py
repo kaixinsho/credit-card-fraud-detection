@@ -251,8 +251,10 @@ with tab2:
             if "Class" in res.columns:
                 y = res["Class"].astype(int).values
                 yp = (probs >= thr).astype(int)
-                tp = int(((y == 1) & (yp == 1)).sum()); fp = int(((y == 0) & (yp == 1)).sum())
-                fn = int(((y == 1) & (yp == 0)).sum()); tn = int(((y == 0) & (yp == 0)).sum())
+                tp = int(((y == 1) & (yp == 1)).sum())
+                fp = int(((y == 0) & (yp == 1)).sum())
+                fn = int(((y == 1) & (yp == 0)).sum())
+                tn = int(((y == 0) & (yp == 0)).sum())
                 prec = tp / (tp + fp) if tp + fp else 0.0
                 rec = tp / (tp + fn) if tp + fn else 0.0
                 f1 = 2 * prec * rec / (prec + rec) if prec + rec else 0.0
