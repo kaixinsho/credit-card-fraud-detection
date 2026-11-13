@@ -1,9 +1,9 @@
-streamlit>=1.40
-xgboost>=3.0
-pandas
-numpy
-scikit-learn
-matplotlib
-seaborn
-shap
-joblib
+# Runtime (API + Streamlit)
+numpy>=1.26
+pandas>=2.1
+fastapi>=0.110
+uvicorn[standard]>=0.29
+pydantic>=2.6
+streamlit>=1.35
+requests>=2.31
+xgboost>=2.0   # opsional: dibutuhkan untuk penjelasan SHAP

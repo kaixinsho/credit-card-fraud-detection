@@ -34,12 +34,13 @@ div[data-testid="stTabs"] button { font-weight:600; }
 """
 
 
-def hero(backend: str) -> str:
+def hero(pills) -> str:
+    chips = "".join(f'<span class="pill">{_h.escape(str(p))}</span>' for p in pills)
     return (
         '<div class="hero"><h1>🛡️ Credit Card Fraud Detector</h1>'
-        '<p>Deteksi transaksi kartu kredit mencurigakan dengan XGBoost, ditangani untuk data yang sangat tidak seimbang.</p>'
-        f'<div style="margin-top:14px"><span class="pill">XGBoost</span><span class="pill">SHAP</span>'
-        f'<span class="pill">scale_pos_weight</span><span class="pill">engine: {_h.escape(backend)}</span></div></div>'
+        '<p>Deteksi transaksi kartu kredit mencurigakan dari data yang sangat tidak seimbang, '
+        'lengkap dengan penjelasan alasan keputusan model.</p>'
+        f'<div style="margin-top:14px">{chips}</div></div>'
     )
 
 

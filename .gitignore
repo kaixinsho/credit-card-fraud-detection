@@ -1,1 +1,10 @@
-creditcard.csv
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+.ruff_cache/
+data/*.db
+data/creditcard.csv
+*.csv
+.env
+.ipynb_checkpoints/

@@ -1,23 +1,52 @@
-# Credit Card Fraud Detection - Machine Learning Pipeline
+# Credit Card Fraud Detection System
 
-Proyek ini bertujuan untuk mendeteksi transaksi penipuan (fraud) pada kartu kredit menggunakan algoritma Machine Learning. Tantangan utama dalam proyek ini adalah menangani ketidakseimbangan data yang sangat ekstrem (imbalanced dataset), di mana kasus *fraud* hanya sebesar 0.17% dari total data.
+Deteksi transaksi kartu kredit fraud (dataset Kaggle *Credit Card Fraud Detection*, 284.807 transaksi, 0,17% fraud).
 
-## Deskripsi Proyek
-Model yang digunakan dalam proyek ini adalah **XGBoost Classifier**. Untuk memastikan model dapat mengenali kelas minoritas (*fraud*) dengan baik, dilakukan penyesuaian bobot menggunakan parameter `scale_pos_weight` dan pencarian hyperparameter terbaik melalui `RandomizedSearchCV`.
+**Komponen**
+- `notebooks/fraud_detection_v2.ipynb` — EDA, preprocessing, XGBoost (default vs tuning), Deep Learning (Keras DNN), perbandingan model, SHAP, export artefak.
+- `src/fraud/` — paket inti: preprocessing, inferensi model (XGBoost/DNN), service prediksi, database SQLite.
+- `api/main.py` — REST API (FastAPI).
+- `app/streamlit_app.py` — antarmuka Streamlit (memanggil API, atau berjalan lokal bila API tidak diset).
+- `tests/` — tes otomatis (pytest). `.github/workflows/ci.yml` — CI/CD (ruff, pytest, build Docker, push ke GHCR).
 
-Metrik utama yang menjadi fokus evaluasi adalah **Recall**, karena dalam kasus deteksi penipuan, jauh lebih penting untuk meminimalkan *False Negatives* (transaksi penipuan yang gagal dideteksi).
+## Arsitektur
+```
+Streamlit UI  ──HTTP──>  FastAPI (/predict, /predict/batch, /history, /stats)
+                              │
+                     FraudService (model + preprocessing)  ──>  SQLite (predictions.db)
+                              │
+                     artifacts/ (model_*.json|npz, preprocessing.json, model_meta.json)
+```
 
-## Tahapan Pipeline
-1. **Data Preprocessing:** Pembersihan data, scaling fitur, dan pembagian dataset (Train-Test Split).
-2. **Modeling & Tuning:** Pelatihan model XGBoost awal dan optimasi parameter menggunakan RandomizedSearchCV dengan Stratified K-Fold Cross Validation.
-3. **Evaluasi Model:** Menggunakan Classification Report, ROC-AUC Score, dan visualisasi Confusion Matrix.
+## Menjalankan lokal
+```bash
+python -m venv .venv && source .venv/bin/activate      # Windows: .venv\Scripts\activate
+pip install -r requirements-dev.txt
+pytest -q                                              # jalankan tes
+uvicorn api.main:create_app --factory --reload         # API di http://127.0.0.1:8000/docs
+# terminal kedua:
+set FRAUD_API_URL=http://127.0.0.1:8000                # Windows CMD; Mac/Linux: export FRAUD_API_URL=...
+streamlit run app/streamlit_app.py                     # tanpa FRAUD_API_URL, Streamlit jalan mode lokal
+```
 
-## Cara Menjalankan Proyek
-1. Clone repositori ini:
-   `git clone https://github.com/kaixinsho/credit-card-fraud-detection`
-2. Install semua library yang dibutuhkan:
-   `pip install -r requirements.txt`
-3. Jalankan file `notebook.ipynb` menggunakan Jupyter Notebook, VS Code, atau Google Colab.
+## Docker
+```bash
+docker compose up --build        # API :8000, UI :8501
+```
 
-## Author
-* Gabriella Annabelle Antoniette
+## Endpoint
+| Method | Path | Fungsi |
+|---|---|---|
+| GET | `/health` | status layanan |
+| GET | `/model/info` | metadata model |
+| POST | `/predict?save=true&explain=false&threshold=0.5` | prediksi 1 transaksi |
+| POST | `/predict/batch` | prediksi banyak transaksi |
+| GET | `/history`, `/stats` | riwayat & ringkasan dari database |
+| DELETE | `/history` | hapus riwayat |
+
+## Mengganti model
+Jalankan notebook v2 di Colab, salin `model_*`, `preprocessing.json`, `model_meta.json` dari `artifacts_v2/` ke `artifacts/`, lalu `pytest` dan jalankan ulang API. Model yang tersimpan di repo saat ini adalah baseline v1 sampai artefak v2 dimasukkan.
+
+## Catatan
+- Fitur V1–V28 adalah hasil PCA yang dianonimkan; aplikasi ini untuk demonstrasi/portofolio, bukan sistem produksi.
+- Penjelasan SHAP membutuhkan library `xgboost` terpasang dan model bertipe XGBoost.

@@ -1,20 +1,37 @@
+import os
+import sys
+from pathlib import Path
+
 import numpy as np
 import pandas as pd
 import streamlit as st
 
-import ui_parts as ui
-from fraud_engine import FraudEngine, RAW_COLS
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "src"))
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+import ui_parts as ui  # noqa: E402
+from fraud.features import RAW_COLS  # noqa: E402
+from predictor import LocalPredictor, PredictorError, RemotePredictor  # noqa: E402
 
 st.set_page_config(page_title="Credit Card Fraud Detector", page_icon="🛡️", layout="wide")
 st.markdown(ui.CSS, unsafe_allow_html=True)
 
 
 @st.cache_resource(show_spinner="Memuat model...")
-def get_engine():
-    return FraudEngine()
+def get_predictor():
+    url = os.getenv("FRAUD_API_URL", "").strip()
+    return RemotePredictor(url) if url else LocalPredictor()
 
 
-engine = get_engine()
+predictor = get_predictor()
+try:
+    model_info = predictor.info()
+except PredictorError as e:
+    st.error(str(e))
+    st.stop()
+meta = model_info.get("meta", {}) or {}
+metrics = meta.get("metrics_test", {}) or {}
 
 # ---------- Preset contoh ----------
 NORMAL = dict(Time=0.0, Amount=149.62, V1=-1.359807, V2=-0.072781, V3=2.536347, V4=1.378155, V5=-0.338321,
@@ -67,24 +84,33 @@ def pick_real(kind: str):
 for _k, _v in NORMAL.items():
     st.session_state.setdefault(f"in_{_k}", float(_v))
 
+
+def save_current(tx: dict, thr: float):
+    try:
+        res = predictor.predict_one(tx, threshold=thr, explain=False, save=True)
+        st.session_state["saved_msg"] = f"Tersimpan di database (ID #{res.get('transaction_id')})."
+    except PredictorError as e:
+        st.session_state["saved_msg"] = f"Gagal menyimpan: {e}"
+
+
 # ---------- Header + sidebar ----------
-st.markdown(ui.hero(engine.backend), unsafe_allow_html=True)
+st.markdown(ui.hero([f"Mode: {predictor.mode}", f"Model: {model_info.get('model_kind', '?')} {model_info.get('model_version', '')}", f"Backend: {model_info.get('backend', '-')}"]), unsafe_allow_html=True)
 
 with st.sidebar:
     st.markdown("### ⚙️ Pengaturan")
-    thr = st.slider("Ambang batas fraud (threshold)", 0.05, 0.95, 0.50, 0.05,
+    thr = st.slider("Ambang batas fraud (threshold)", 0.05, 0.95, float(model_info.get("threshold", 0.5)), 0.05,
                     help="Probabilitas minimal agar transaksi ditandai fraud. "
                          "Turunkan untuk menangkap lebih banyak fraud (recall naik, false alarm naik).")
     st.caption("Default 0.50 = hasil evaluasi di notebook.")
     st.divider()
     st.markdown("### 📈 Performa model (data uji)")
     st.markdown(
-        ui.kpi("Recall Fraud", "83%", "81 dari 98 fraud tertangkap") + "<div style='height:8px'></div>" +
-        ui.kpi("Precision Fraud", "89%", "81 dari 91 peringatan benar") + "<div style='height:8px'></div>" +
-        ui.kpi("F1-Score Fraud", "0.86", "56.962 transaksi uji"),
+        ui.kpi("Recall Fraud", f"{metrics.get('recall', 0):.0%}", "pada data uji") + "<div style='height:8px'></div>" +
+        ui.kpi("Precision Fraud", f"{metrics.get('precision', 0):.0%}", "pada data uji") + "<div style='height:8px'></div>" +
+        ui.kpi("F1-Score Fraud", f"{metrics.get('f1', 0):.2f}", "pada data uji"),
         unsafe_allow_html=True)
 
-tab1, tab2, tab3 = st.tabs(["🔍 Cek Satu Transaksi", "📂 Analisis Batch (CSV)", "📊 Tentang Model"])
+tab1, tab2, tab3, tab4 = st.tabs(["🔍 Cek Satu Transaksi", "📂 Analisis Batch (CSV)", "📊 Tentang Model", "🗄️ Riwayat (Database)"])
 
 # =====================================================================
 # TAB 1 — satu transaksi
@@ -146,9 +172,13 @@ with tab1:
             for i, f in enumerate(OTHER_FEATURES):
                 [e1, e2, e3, e4][i % 4].number_input(f, step=0.1, format="%.4f", key=f"in_{f}")
 
-    raw = pd.DataFrame([{c: st.session_state[f"in_{c}"] for c in RAW_COLS}])
-    X = engine.prepare(raw)
-    p = float(engine.predict_proba(X)[0])
+    tx = {c: float(st.session_state[f"in_{c}"]) for c in RAW_COLS}
+    try:
+        result = predictor.predict_one(tx, threshold=thr, explain=True)
+    except PredictorError as e:
+        st.error(str(e))
+        st.stop()
+    p = float(result["fraud_probability"])
 
     with c2:
         info = st.session_state.get("real_info")
@@ -171,18 +201,19 @@ with tab1:
         st.markdown('<div class="card"><h4>Hasil prediksi</h4>' + ui.gauge(p, thr) + '<div class="note" style="text-align:center;margin-bottom:8px">Garis putih = threshold ' + f'{thr:.2f}' + '</div>' + ui.verdict(p, thr) + '</div>',
                     unsafe_allow_html=True)
         st.markdown("")
-        contrib = engine.contributions(X)
-        if contrib is not None:
-            row = contrib.iloc[0]
-            top = row.reindex(row.abs().sort_values(ascending=False).index)[:8]
-            items = [(n, float(X.iloc[0][n]), float(v)) for n, v in top.items()]
+        factors = result.get("top_factors")
+        if factors:
+            items = [(f["feature"], float(f["value"]), float(f["contribution"])) for f in factors]
             st.markdown('<div class="card"><h4>Faktor penentu (SHAP)</h4>' + ui.contrib_bars(items) +
                         '<div class="note">Merah mendorong ke arah FRAUD, hijau ke arah NORMAL (satuan log-odds). '
                         'Nilai fitur Amount/Time ditampilkan dalam bentuk terstandarisasi.</div></div>',
                         unsafe_allow_html=True)
         else:
-            st.info("Penjelasan SHAP aktif setelah library `xgboost` terpasang "
+            st.info("Penjelasan SHAP aktif bila library `xgboost` terpasang di sisi model "
                     "(`pip install -U xgboost`). Prediksi tetap berjalan tanpa itu.")
+        st.button("💾 Simpan prediksi ini ke database", on_click=save_current, args=(tx, thr))
+        if st.session_state.get("saved_msg"):
+            st.caption(st.session_state.pop("saved_msg"))
 
 # =====================================================================
 # TAB 2 — batch CSV
@@ -197,8 +228,14 @@ with tab2:
         if missing:
             st.error(f"Kolom berikut tidak ditemukan: {', '.join(missing)}")
         else:
-            with st.spinner(f"Menganalisis {len(df):,} transaksi..."):
-                probs = engine.predict_proba(engine.prepare(df[RAW_COLS]))
+            bar = st.progress(0.0, text=f"Menganalisis {len(df):,} transaksi...")
+            try:
+                probs = predictor.predict_batch_proba(df, progress=lambda f: bar.progress(f))
+            except PredictorError as e:
+                bar.empty()
+                st.error(str(e))
+                st.stop()
+            bar.empty()
             res = df.copy()
             res["fraud_probability"] = probs
             res["prediction"] = np.where(probs >= thr, "FRAUD", "NORMAL")
@@ -247,17 +284,39 @@ with tab3:
         st.markdown(
             "- **Data**: 284.807 transaksi kartu kredit Eropa, hanya **492 (0,17%)** yang fraud.\n"
             "- **Fitur**: `V1–V28` hasil PCA (dianonimkan), ditambah `Amount` dan `Time` yang distandardisasi.\n"
-            "- **Imbalance**: ditangani dengan `scale_pos_weight ≈ 577` pada XGBoost, tanpa membuang data normal.\n"
+            "- **Imbalance**: ditangani dengan class weight (`scale_pos_weight` pada XGBoost), tanpa membuang data normal.\n"
             "- **Metrik**: fokus pada *precision–recall* (`aucpr`), karena akurasi menyesatkan pada data timpang.\n"
             "- **Penjelasan**: SHAP menunjukkan fitur mana yang mendorong sebuah transaksi dianggap fraud.")
     with b:
         st.markdown("#### Confusion matrix (data uji 20%)")
-        cm = pd.DataFrame([[56854, 10], [17, 81]], index=["Aktual Normal", "Aktual Fraud"],
+        cm = pd.DataFrame([[metrics.get("tn", 0), metrics.get("fp", 0)], [metrics.get("fn", 0), metrics.get("tp", 0)]], index=["Aktual Normal", "Aktual Fraud"],
                           columns=["Prediksi Normal", "Prediksi Fraud"])
         st.dataframe(cm)
-        st.markdown(
-            "<div class='note'>Dari 98 fraud di data uji, 81 tertangkap (recall 83%) dengan hanya 10 false alarm "
-            "dari 56.864 transaksi normal. Ubah threshold di sidebar untuk melihat trade-off recall vs precision.</div>",
-            unsafe_allow_html=True)
+        st.markdown("<div class='note'>Ubah threshold di sidebar untuk melihat trade-off recall vs precision.</div>",
+                    unsafe_allow_html=True)
     st.warning("Aplikasi ini untuk demonstrasi/portofolio. Fitur V1–V28 anonim, jadi input manual hanya simulasi; "
                "untuk penggunaan nyata gunakan data transaksi yang diproses dengan PCA yang sama.")
+
+# =====================================================================
+# TAB 4 — riwayat database
+# =====================================================================
+with tab4:
+    st.markdown("Prediksi yang disimpan (lewat tombol **Simpan** atau endpoint `POST /predict`) tercatat di database SQLite.")
+    try:
+        stt = predictor.stats()
+        rows = predictor.history(100)
+    except PredictorError as e:
+        st.error(str(e))
+        stt, rows = None, []
+    if stt:
+        h1, h2, h3, h4 = st.columns(4)
+        h1.markdown(ui.kpi("Total tersimpan", f"{stt['total']:,}"), unsafe_allow_html=True)
+        h2.markdown(ui.kpi("Fraud", f"{stt['fraud']:,}"), unsafe_allow_html=True)
+        h3.markdown(ui.kpi("Normal", f"{stt['normal']:,}"), unsafe_allow_html=True)
+        h4.markdown(ui.kpi("Rata-rata probabilitas", ui.fmt_pct(float(stt["avg_probability"] or 0))),
+                    unsafe_allow_html=True)
+    if rows:
+        hist = pd.DataFrame(rows).drop(columns=["features_json"], errors="ignore")
+        st.dataframe(hist, hide_index=True)
+    else:
+        st.info("Belum ada prediksi tersimpan. Buka tab pertama, lalu klik 'Simpan prediksi ini ke database'.")
