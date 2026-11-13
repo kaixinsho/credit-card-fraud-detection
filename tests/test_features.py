@@ -23,7 +23,7 @@ def test_feature_order_and_count():
 
 def test_standardization_formula():
     mean_a, scale_a = PARAMS["amount"]["mean"], PARAMS["amount"]["scale"]
-    mean_t, scale_t = PARAMS["time"]["mean"], PARAMS["time"]["scale"]
+    mean_t = PARAMS["time"]["mean"]
     X = preprocess(_df(Amount=mean_a + scale_a, Time=mean_t), PARAMS)
     assert X["scaled_amount"].iloc[0] == pytest.approx(1.0)
     assert X["scaled_time"].iloc[0] == pytest.approx(0.0)
