@@ -98,10 +98,10 @@ st.markdown(ui.hero([f"Mode: {predictor.mode}", f"Model: {model_info.get('model_
 
 with st.sidebar:
     st.markdown("### ⚙️ Pengaturan")
-    thr = st.slider("Ambang batas fraud (threshold)", 0.05, 0.95, float(model_info.get("threshold", 0.5)), 0.05,
+    thr = st.slider("Ambang batas fraud (threshold)", 0.01, 0.99, min(0.99, max(0.01, float(model_info.get("threshold", 0.5)))), 0.01,
                     help="Probabilitas minimal agar transaksi ditandai fraud. "
                          "Turunkan untuk menangkap lebih banyak fraud (recall naik, false alarm naik).")
-    st.caption("Default 0.50 = hasil evaluasi di notebook.")
+    st.caption("Nilai awal = threshold terbaik dari notebook (dipilih di data validation).")
     st.divider()
     st.markdown("### 📈 Performa model (data uji)")
     st.markdown(

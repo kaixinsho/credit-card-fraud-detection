@@ -1,8 +1,16 @@
 {
   "model_kind": "xgboost",
   "model_file": "model_xgboost.json",
-  "version": "v1-baseline",
-  "threshold": 0.5,
-  "description": "XGBoost default (100 trees, scale_pos_weight=577.29) dari notebook v1. Ganti dengan artefak dari notebook v2.",
-  "metrics_test": {"precision": 0.89, "recall": 0.83, "f1": 0.86, "tn": 56854, "fp": 10, "fn": 17, "tp": 81}
+  "version": "v2-xgboost-tuned",
+  "threshold": 0.962977945804596,
+  "description": "XGBoost tuned, dipilih dari PR-AUC validation. Threshold dari F1 terbaik di validation.",
+  "metrics_test": {
+    "precision": 0.9857142857142858,
+    "recall": 0.7263157894736842,
+    "f1": 0.8363636363636363,
+    "tn": 56650,
+    "fp": 1,
+    "fn": 26,
+    "tp": 69
+  }
 }

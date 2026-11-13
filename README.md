@@ -45,7 +45,16 @@ docker compose up --build        # API :8000, UI :8501
 | DELETE | `/history` | hapus riwayat |
 
 ## Mengganti model
-Jalankan notebook v2 di Colab, salin `model_*`, `preprocessing.json`, `model_meta.json` dari `artifacts_v2/` ke `artifacts/`, lalu `pytest` dan jalankan ulang API. Model yang tersimpan di repo saat ini adalah baseline v1 sampai artefak v2 dimasukkan.
+Jalankan notebook v2 di Colab, salin `model_*`, `preprocessing.json`, `model_meta.json` dari `artifacts_v2/` ke `artifacts/`, lalu `pytest` dan jalankan ulang API. Model yang tersimpan di repo saat ini: XGBoost tuned (v2), threshold 0.963 (dipilih dari data validation).
+
+## Hasil (data test, setelah duplikat dibuang)
+| Model | Precision | Recall | F1 | PR-AUC | ROC-AUC |
+|---|---|---|---|---|---|
+| XGBoost baseline | 0.948 | 0.768 | 0.849 | 0.815 | 0.965 |
+| XGBoost tuned | 0.986 | 0.726 | 0.836 | 0.819 | 0.975 |
+| DNN (Keras) | 0.878 | 0.758 | 0.814 | 0.701 | 0.960 |
+
+Threshold tiap model dipilih dari data validation (F1 terbaik), bukan dari test. Tuning menaikkan PR-AUC/ROC-AUC sedikit dan memangkas false alarm (10 → 1), tetapi recall sedikit turun; DNN tidak mengalahkan XGBoost pada data tabular ini. Detail di `artifacts/model_comparison.csv` dan notebook.
 
 ## Catatan
 - Fitur V1–V28 adalah hasil PCA yang dianonimkan; aplikasi ini untuk demonstrasi/portofolio, bukan sistem produksi.
